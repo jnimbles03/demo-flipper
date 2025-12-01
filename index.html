@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Flipper</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f8; padding: 20px; color: #333; }
+    .container { max-width: 1100px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+    h1 { margin-top: 0; color: #2c3e50; font-size: 28px; margin-bottom: 10px; }
+    .subtitle { color: #555; font-size: 18px; margin-top: 0; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #eee; line-height: 1.5; }
+    
+    .controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+    .control-group { background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+    label.setting-label { font-weight: 700; display: block; margin-bottom: 5px; color: #0176d3; font-size: 13px; }
+    .desc { font-size: 11px; color: #666; margin-bottom: 8px; line-height: 1.3; min-height: 45px; }
+    input[type="number"], input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+
+    /* Standard Upload Area */
+    .upload-label { 
+      display: block; border: 3px dashed #cbd5e0; border-radius: 12px; padding: 40px 20px; text-align: center; 
+      transition: all 0.3s ease; background: #fff; cursor: pointer; margin-bottom: 15px;
+    }
+    .upload-label:hover { border-color: #0176d3; background-color: #f8fbff; }
+    .btn-outline { display: inline-block; border: 2px solid #0176d3; color: #0176d3; background-color: white; padding: 10px 25px; border-radius: 6px; font-weight: bold; font-size: 16px; pointer-events: none; }
+    
+    .url-input-container { padding: 15px; background: #fafafa; border-radius: 8px; border: 1px solid #eee; display: flex; gap: 10px; justify-content: center; align-items: center; margin-bottom: 20px;}
+
+    #crop-section { display: none; margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; }
+    .editor-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; }
+    .canvas-box { position: relative; border: 1px solid #ddd; background: #000; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    canvas { display: block; max-width: 100%; height: auto; }
+    #cropCanvas { cursor: crosshair; }
+    #overlay { position: absolute; border: 2px dashed #00ff00; background: rgba(0, 255, 0, 0.1); pointer-events: none; }
+    
+    .checkerboard { background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 20px 20px; background-color: white; }
+
+    .action-btn { background: #0176d3; color: white; border: none; padding: 15px 30px; cursor: pointer; font-size: 16px; border-radius: 6px; width: 100%; font-weight: bold; margin-top: 20px; }
+    .action-btn:hover { background: #005bb5; }
+    .action-btn:disabled { background: #ccc; cursor: not-allowed; }
+    .status { margin-top: 15px; font-weight: bold; color: #0176d3; text-align: center; min-height: 20px; }
+    .error { color: #d93025; font-size: 14px; margin-top: 10px; text-align: center; background: #fff5f5; padding: 10px; border-radius: 5px; display:none; border: 1px solid #fcb3b3; }
+    .live-badge { position: absolute; top: 10px; right: 10px; background: rgba(255,0,0,0.8); color: white; padding: 4px 8px; font-size: 10px; border-radius: 4px; font-weight: bold; text-transform: uppercase; animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>🐬Demo Flipper</h1>
+  <p class="subtitle">🎥 HD Video ➡️ 🪶 Lightweight Flipbook. Control: ⌨️ ⬅️ / ➡️</p>
+  
+  <div class="controls">
+    <div class="control-group"><label class="setting-label">Capture (Nth Frame)</label><p class="desc">Lower = Smoother video, but larger file.<br>Changes trigger a cache reload.</p><input type="number" id="captureN" value="15" min="1"></div>
+    <div class="control-group"><label class="setting-label">Resize Width (px)</label><p class="desc">Pixel width of the output images.</p><input type="number" id="resizeWidth" value="1400"></div>
+    <div class="control-group"><label class="setting-label">Black Threshold</label><p class="desc">Pixels darker than this become transparent.</p><input type="number" id="threshold" value="15" max="255"></div>
+    <div class="control-group"><label class="setting-label">Scroll Speed (ms)</label><p class="desc">Animation speed in the live preview below.</p><input type="number" id="scrollSpeed" value="150"></div>
+  </div>
+
+  <label id="drop-area" class="upload-label">
+    <p style="margin-bottom:15px; pointer-events:none;"><strong>Click</strong> or <strong>Drag & Drop</strong> video here</p>
+    <span class="btn-outline">Choose File</span>
+    <input type="file" id="fileInput" accept="video/*" style="display:none">
+  </label>
+
+  <div class="url-input-container">
+    <span style="font-size:14px; font-weight:bold; color:#666;">OR Load URL:</span>
+    <input type="text" id="urlInput" placeholder="https://example.com/video.mp4" style="width: 300px;">
+    <button onclick="loadFromUrl()" class="btn-outline" style="padding: 8px 15px; cursor:pointer; pointer-events:auto;">Load</button>
+  </div>
+    
+  <div id="error-msg" class="error"></div>
+  <div class="status" id="status"></div>
+
+  <div id="crop-section">
+    <div class="editor-grid">
+      <div><h3 style="margin-top:0;">1. Draw Crop Box</h3><div class="canvas-box"><canvas id="cropCanvas"></canvas><div id="overlay"></div></div></div>
+      <div><h3 style="margin-top:0;">2. Live Preview</h3><p style="font-size:12px; color:#666;">Simulates Speed, Frame Rate, & Transparency.</p><div class="canvas-box checkerboard"><div class="live-badge">Live Preview</div><canvas id="previewCanvas"></canvas></div><p id="preview-info" style="font-size:11px; text-align:center; color:#888; margin-top:5px;">Loading...</p></div>
+    </div>
+    <button id="processBtn" class="action-btn">Generate HTML</button>
+  </div>
+</div>
+
+<video id="hiddenVideo" style="display:none;" muted playsinline crossorigin="anonymous"></video>
+
+<script>
+  const video = document.getElementById('hiddenVideo');
+  const canvas = document.getElementById('cropCanvas');
+  const ctx = canvas.getContext('2d');
+  const previewCanvas = document.getElementById('previewCanvas');
+  const previewCtx = previewCanvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const dropArea = document.getElementById('drop-area');
+  const fileInput = document.getElementById('fileInput');
+  const errorMsg = document.getElementById('error-msg');
+  const statusEl = document.getElementById('status');
+  
+  let cropRect = { x: 0, y: 0, w: 0, h: 0 };
+  let isDragging = false, startX, startY;
+  let previewCache = [], previewIndex = 0, previewTimer = null, isCaching = false, processingActive = false;
+
+  document.getElementById('captureN').addEventListener('change', refreshPreviewCache);
+  document.getElementById('resizeWidth').addEventListener('change', refreshPreviewCache);
+  document.getElementById('scrollSpeed').addEventListener('input', resetPreviewTimer);
+  
+  fileInput.addEventListener('change', function(e) { if(this.files.length) handleFiles(this.files); });
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => dropArea.addEventListener(e, preventDefaults, false));
+  function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+  ['dragenter', 'dragover'].forEach(e => dropArea.addEventListener(e, () => dropArea.style.borderColor = '#0176d3', false));
+  ['dragleave', 'drop'].forEach(e => dropArea.addEventListener(e, () => dropArea.style.borderColor = '#cbd5e0', false));
+  dropArea.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+  function handleFiles(files) {
+    if(!files.length) return;
+    const file = files[0];
+    if(!file.type.startsWith('video')) return showError("Not a video file.");
+    statusEl.innerText = `Reading ${file.name}...`; hideError();
+    document.getElementById('crop-section').style.display = 'none';
+    video.removeAttribute('crossorigin');
+    loadVideo(URL.createObjectURL(file));
+  }
+
+  function loadFromUrl() {
+    let url = document.getElementById('urlInput').value.trim();
+    if(!url) return;
+    if(url.includes('drive.google.com') && url.includes('/view')) {
+      const match = url.match(/\/d\/(.+?)\//);
+      if(match && match[1]) url = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+    }
+    statusEl.innerText = "Connecting..."; document.getElementById('crop-section').style.display = 'none';
+    video.setAttribute('crossorigin', 'anonymous');
+    loadVideo(url);
+  }
+
+  function loadVideo(src) {
+    if(previewTimer) clearInterval(previewTimer);
+    isCaching = false; processingActive = false; document.getElementById('processBtn').disabled = false;
+    video.src = ""; video.load(); video.src = src;
+    video.onerror = () => { showError("Cannot load video. If using URL, try downloading it."); statusEl.innerText = ""; };
+    video.onloadedmetadata = () => {
+       statusEl.innerText = "Loaded! Rendering editor...";
+       canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+       cropRect = { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight };
+       video.currentTime = 0.1; 
+    };
+    const onFirstSeek = () => {
+       document.getElementById('crop-section').style.display = 'block';
+       ctx.drawImage(video, 0, 0); statusEl.innerText = ""; refreshPreviewCache();
+       video.removeEventListener('seeked', onFirstSeek);
+    };
+    video.addEventListener('seeked', onFirstSeek);
+  }
+
+  function showError(msg) { errorMsg.innerHTML = msg; errorMsg.style.display = 'block'; statusEl.innerText = ""; }
+  function hideError() { errorMsg.style.display = 'none'; errorMsg.innerHTML = ""; }
+
+  canvas.addEventListener('mousedown', e => {
+    let r = canvas.getBoundingClientRect();
+    let sx = canvas.width / r.width, sy = canvas.height / r.height;
+    startX = (e.clientX - r.left) * sx; startY = (e.clientY - r.top) * sy;
+    isDragging = true; overlay.style.width='0'; overlay.style.height='0';
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    let r = canvas.getBoundingClientRect();
+    let cx = (e.clientX - r.left) * (canvas.width/r.width), cy = (e.clientY - r.top) * (canvas.height/r.height);
+    let w = cx - startX, h = cy - startY;
+    overlay.style.width = Math.abs(e.clientX-r.left-(startX/(canvas.width/r.width)))+'px';
+    overlay.style.height = Math.abs(e.clientY-r.top-(startY/(canvas.height/r.height)))+'px';
+    overlay.style.left = (w<0?e.clientX-r.left:startX/(canvas.width/r.width))+'px';
+    overlay.style.top = (h<0?e.clientY-r.top:startY/(canvas.height/r.height))+'px';
+    cropRect = { x: w<0?cx:startX, y: h<0?cy:startY, w: Math.abs(w), h: Math.abs(h) };
+  });
+  canvas.addEventListener('mouseup', () => { isDragging = false; refreshPreviewCache(); });
+
+  async function refreshPreviewCache() {
+    if (isCaching || processingActive || cropRect.w <= 0) return;
+    isCaching = true; if(previewTimer) clearInterval(previewTimer);
+    document.getElementById('preview-info').innerText = "Generating Preview...";
+    const captureN = parseInt(document.getElementById('captureN').value);
+    const targetWidth = parseInt(document.getElementById('resizeWidth').value) || 800;
+    const targetHeight = Math.floor(targetWidth * (cropRect.h / cropRect.w));
+    previewCanvas.width = targetWidth; previewCanvas.height = targetHeight;
+    previewCache = []; 
+    const tmpCv = document.createElement('canvas'), tmpCtx = tmpCv.getContext('2d');
+    tmpCv.width = video.videoWidth; tmpCv.height = video.videoHeight;
+    const procCv = document.createElement('canvas'), procCtx = procCv.getContext('2d');
+    procCv.width = targetWidth; procCv.height = targetHeight;
+
+    const stepTime = captureN / 30; let currentTime = 0;
+    const grabFrame = async () => new Promise(resolve => {
+        const onSeek = () => { video.removeEventListener('seeked', onSeek); tmpCtx.drawImage(video,0,0); procCtx.drawImage(tmpCv,cropRect.x,cropRect.y,cropRect.w,cropRect.h,0,0,targetWidth,targetHeight); previewCache.push(procCtx.getImageData(0,0,targetWidth,targetHeight)); resolve(); };
+        video.addEventListener('seeked', onSeek); video.currentTime = currentTime;
+    });
+    try { for(let i=0; i<20; i++) { if(currentTime > video.duration) break; await grabFrame(); currentTime += stepTime; } } catch(e){}
+    document.getElementById('preview-info').innerText = `Previewing: ${previewCache.length} frames`; isCaching = false; resetPreviewTimer();
+  }
+
+  function resetPreviewTimer() {
+    if (previewTimer) clearInterval(previewTimer);
+    const ms = parseInt(document.getElementById('scrollSpeed').value) || 150;
+    previewTimer = setInterval(() => {
+        if (!previewCache.length) return;
+        previewIndex = (previewIndex + 1) % previewCache.length;
+        const thresh = parseInt(document.getElementById('threshold').value) || 0;
+        const raw = previewCache[previewIndex], img = new ImageData(new Uint8ClampedArray(raw.data), raw.width, raw.height), d = img.data;
+        for(let i=0; i<d.length; i+=4) if(((d[i]+d[i+1]+d[i+2])/3) < thresh) d[i+3]=0;
+        previewCtx.putImageData(img, 0, 0);
+    }, ms);
+  }
+
+  document.getElementById('processBtn').addEventListener('click', () => {
+    if (cropRect.w === 0) return showError("Please draw a crop box.");
+    const btn = document.getElementById('processBtn'); btn.disabled = true; processingActive = true; if (previewTimer) clearInterval(previewTimer); 
+    const captureN = parseInt(document.getElementById('captureN').value);
+    const tW = previewCanvas.width, tH = previewCanvas.height, thresh = parseInt(document.getElementById('threshold').value);
+    const scrollSpeed = parseInt(document.getElementById('scrollSpeed').value);
+    let frames = [], curTime = 0, step = captureN / 30, dur = video.duration;
+    
+    const tmpCv = document.createElement('canvas'), tmpCtx = tmpCv.getContext('2d'); tmpCv.width=video.videoWidth; tmpCv.height=video.videoHeight;
+    const procCv = document.createElement('canvas'), procCtx = procCv.getContext('2d'); procCv.width=tW; procCv.height=tH;
+
+    const onProcSeek = () => {
+       try {
+        tmpCtx.drawImage(video,0,0); procCtx.drawImage(tmpCv,cropRect.x,cropRect.y,cropRect.w,cropRect.h,0,0,tW,tH);
+        let img = procCtx.getImageData(0,0,tW,tH), d = img.data;
+        for(let i=0; i<d.length; i+=4) if(((d[i]+d[i+1]+d[i+2])/3) < thresh) d[i+3]=0;
+        procCtx.putImageData(img,0,0); frames.push(procCv.toDataURL('image/webp', 0.85));
+        statusEl.innerText = `Processing: ${Math.floor((curTime/dur)*100)}%`; curTime += step;
+        if (curTime >= dur) { video.removeEventListener('seeked', onProcSeek); finish(frames, scrollSpeed); } 
+        else video.currentTime = curTime;
+      } catch(e) { showError("Error processing. Use Drag & Drop."); video.removeEventListener('seeked', onProcSeek); btn.disabled=false; processingActive=false; }
+    };
+    video.addEventListener('seeked', onProcSeek); video.currentTime = curTime;
+  });
+
+  function finish(frames, speed) {
+    statusEl.innerText = "Downloading...";
+    const json = JSON.stringify(frames);
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Video Click-Through</title><style>body{background-color:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;overflow:hidden}#container{position:relative;cursor:pointer;user-select:none;width:100%;height:100%;display:flex;align-items:center;justify-content:center}img{width:100%;height:100%;object-fit:contain;display:block;-webkit-user-drag:none}.progress{width:100%;height:5px;background:rgba(255,255,255,0.2);position:absolute;bottom:0;left:0}#bar{height:100%;background:#0176d3;width:0%;transition:width 0.1s}</style></head><body><div id="container"><img id="viewer" src="${frames[0]}"><div class="progress"><div id="bar"></div></div></div><script>const frames=${json};let idx=0,img=document.getElementById('viewer'),bar=document.getElementById('bar'),si=null,spd=${speed};function up(){if(!frames.length)return;img.src=frames[idx];bar.style.width=((idx+1)/frames.length)*100+'%'}function nx(){idx++;if(idx>=frames.length)idx=0;up()}function pr(){idx--;if(idx<0)idx=frames.length-1;up()}document.onkeydown=e=>{if(e.key=='ArrowRight'){e.preventDefault();if(!e.repeat){nx();st('n')}}if(e.key=='ArrowLeft'){e.preventDefault();if(!e.repeat){pr();st('p')}}};document.onkeyup=()=>{if(si){clearInterval(si);si=null}};function st(d){if(si)return;si=setInterval(()=>{d=='n'?nx():pr()},spd)}document.getElementById('container').onclick=nx;document.getElementById('container').oncontextmenu=e=>{e.preventDefault();pr();return false};up();<\/script></body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'advisor.html';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    document.getElementById('processBtn').disabled = false; statusEl.innerText = "Done!"; processingActive = false; refreshPreviewCache();
+  }
+</script>
+</body>
+</html>
